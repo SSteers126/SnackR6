@@ -1,0 +1,3 @@
+pyinstaller main.py --noconsole --icon=src/logo/Snack-R6-icon.ico
+
+Consider using pyside2-rrc for images to stop the requirement for src to be copied to the build folder
