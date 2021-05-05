@@ -11,15 +11,16 @@ import globalfile
 from PySide2.QtCore import (Qt, QRectF, QSize, QRect, QDateTime, QDir, Signal, QMetaObject)
 from PySide2.QtGui import (QPalette, QColor, QRadialGradient, QLinearGradient, QConicalGradient,
                            QBrush, QGradient, QFont, QPixmap, QIcon)
-from PySide2.QtWidgets import (QVBoxLayout, QHBoxLayout, QStyleFactory, QWidget, QLineEdit, QPushButton, QApplication,
+from PySide2.QtWidgets import (QVBoxLayout, QHBoxLayout, QGridLayout, QStyleFactory, QWidget, QLineEdit, QPushButton, QApplication,
                                QDialog, QMainWindow, QLabel, QGroupBox, QDoubleSpinBox, QSpinBox, QDateTimeEdit, QComboBox,
-                               QStatusBar, QMenuBar,
+                               QStatusBar, QMenuBar, QSizePolicy,
                                QDateEdit,
-                               QCheckBox, QTextEdit, QTabWidget, QFileSystemModel, QTreeView)
+                               QCheckBox, QTextEdit, QTabWidget, QFileSystemModel, QTreeView, QScrollArea)
 # from PySide2.QtCharts import (QLineSeries)
 from PySide2.QtCharts import QtCharts
 
 from PIL import Image, ImageOps, ImageDraw, ImageFont
+import conversions
 
 import ctypes
 try:  # This code is windows specific, so requires protection
@@ -47,19 +48,22 @@ class un_input(QDialog):
         QApplication.setFont(QFont("Helvetica", 11, 60))  # Montserrat Medium
         self.setWindowTitle("View statistics")
         self.resize(750, 500)
-        dir_path = Path(os.path.dirname(os.path.realpath(__file__)))
+
+        dir_path = Path(os.path.dirname(os.path.realpath(__file__)))  # NOTE: folder image resize script
         path = dir_path / "src" / "ranks"
-        oppath = dir_path / "src" / "ranks" / "250"
-        # for imgpath in os.listdir(path):  # NOTE: folder image resize script
-        #     if len(imgpath.split(".")) > 1:
-        #         # print(imgpath)
-        #         img = Image.open(path / imgpath)
-        #         img = img.resize([int(img.size[0]*0.5), int(img.size[1]*0.5)], 3)
-        #         img.save(oppath / imgpath)
-        logo = Image.open("src/logo/Snack-R6-logo.png")
-        logo = logo.resize([int(logo.size[0]*0.0625), int(logo.size[1]*0.0625)], 3) # 3 for bicubic filtering
-        logo.save("SL.png")
-        print(logo.size)
+        oppath = dir_path / "src" / "ranks" / "35"
+        for imgpath in os.listdir(path):
+            if len(imgpath.split(".")) > 1:
+                # print(imgpath)
+                img = Image.open(path / imgpath)
+                img = img.resize([int(img.size[0]*0.07), int(img.size[1]*0.07)], 3)  # 0.01 = 5x5
+                img.save(oppath / imgpath)
+
+        # logo = Image.open("src/logo/Snack-R6-logo.png")
+        # logo = logo.resize([int(logo.size[0]*0.0625), int(logo.size[1]*0.0625)], 3) # 3 for bicubic filtering
+        # logo.save("SL.png")
+        # print(logo.size)
+
         # logosize = logo.
         Qtlogo = QPixmap("src/logo/SL.png")
         self.LogoLabel = QLabel()
@@ -205,10 +209,32 @@ class main_panel(QMainWindow):
         self.KDWidget.setLayout(self.KDLayout)
         self.Tabs.addTab(self.KDWidget, "Ranked &K/D per season")
 
+        self.ELOTabs = QTabWidget()
+        self.Tabs.addTab(self.ELOTabs, "&MMR stats")
         self.ELOLayout = QVBoxLayout()
         self.ELOWidget = QWidget()
         self.ELOWidget.setLayout(self.ELOLayout)
-        self.Tabs.addTab(self.ELOWidget, "&MMR stats")
+        self.BasicELOLayout = QVBoxLayout()
+        # for i in range(30):
+        #     labell = QLabel("alabel")
+        #     self.BasicELOLayout.addWidget(labell)
+        # self.BasicELOLayout.setGeometry()
+        # self.BasicELOLayout = QGridLayout()  # Grid layout needs to be inserted into another layout
+        # self.BasicELOPreLayout.addLayout(self.BasicELOLayout)
+        # self.BasicELOWidget = QWidget()
+        # self.BasicELOWidget.setLayout(self.BasicELOLayout)
+        self.BasicELOScroll = QScrollArea()
+        # self.BasicELOScroll.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.BasicELOScroll.setWidgetResizable(True)
+        self.BasicELOScroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.BasicELOScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.BasicELOScrollContainer = QWidget()
+        self.BasicELOScroll.setWidget(self.BasicELOScrollContainer)
+        # self.BasicELOScroll.setLayout(self.BasicELOLayout)
+        # self.BasicELOLayout.addStretch(5)
+        # self.BasicELOScroll.setWidgetResizable(False)
+        self.ELOTabs.addTab(self.BasicELOScroll, "basic MMR stats")
+        self.ELOTabs.addTab(self.ELOWidget, "MMR chart")
 
         self.OperatorTabs = QTabWidget()
         self.Tabs.addTab(self.OperatorTabs, "&Operator data")
@@ -228,7 +254,7 @@ class main_panel(QMainWindow):
         self.SeasonalData = loop.run_until_complete(client.get_seasonal_stats(username, platform))
         self.OperatorData = loop.run_until_complete(client.get_operators_stats(username, platform))
         # print(self.SeasonalData.seasons)
-        print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0])
+        # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0])
         # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0]["max_mmr"])
         # print(self.OperatorData.operators)
         self.genAllGraphs()
@@ -245,12 +271,12 @@ class main_panel(QMainWindow):
 
         self.KDSeries = QtCharts.QLineSeries()
         KDList = []
-        l = []
+        SeasonNames = []
         seasons = len(self.SeasonalData.seasons)
         for i in range(seasons):
-            l.append(None)
+            SeasonNames.append(None)
         for count, season in enumerate(self.SeasonalData.seasons):
-            l[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = (self.SeasonalData.seasons[season]["name"])
+            SeasonNames[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = (self.SeasonalData.seasons[season]["name"])
             kills = self.SeasonalData.seasons[season]["regions"]["emea"][0]["kills"]
             if kills is None or kills <= 0:
                 kills = 0
@@ -268,7 +294,7 @@ class main_panel(QMainWindow):
         self.KDChart.legend().setVisible(False)
 
         X_axis = QtCharts.QBarCategoryAxis()
-        X_axis.append(l)
+        X_axis.append(SeasonNames)
         Y_axis = QtCharts.QValueAxis()
         Y_axis.setRange(0.0, float(KDList[0]))
 
@@ -284,14 +310,14 @@ class main_panel(QMainWindow):
         self.MaxELOSet = QtCharts.QBarSet("Max MMR")
         ELOList = []
         LifetimeMax = 0
-        l = []
+        SeasonNames = []
 
         seasons = len(self.SeasonalData.seasons)
         for i in range(seasons):
-            l.append(None)
+            SeasonNames.append(None)
             ELOList.append([None, None])
         for count, season in enumerate(self.SeasonalData.seasons):
-            l[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = (self.SeasonalData.seasons[season]["name"])
+            SeasonNames[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = (self.SeasonalData.seasons[season]["name"])
             ELO = self.SeasonalData.seasons[season]["regions"]["emea"][0]["mmr"]
             if ELO is None or ELO <= 0:
                 ELO = 0
@@ -308,7 +334,7 @@ class main_panel(QMainWindow):
         ELOList.sort(reverse=True)
         self.ELOChart = QtCharts.QChart()
         self.ELOChart.setAnimationOptions(QtCharts.QChart.SeriesAnimations)
-        self.ELOChart.setTitle("Seasonal Ranked MMR")
+        self.ELOChart.setTitle("Seasonal Ranked MMR (No max MMR means season ended as unranked)")
 
         self.ELOSeries = QtCharts.QBarSeries()
         self.ELOSeries.append(self.ELOSet)
@@ -316,7 +342,7 @@ class main_panel(QMainWindow):
         self.ELOChart.addSeries(self.ELOSeries)
 
         X_axis = QtCharts.QBarCategoryAxis()
-        X_axis.append(l)
+        X_axis.append(SeasonNames)
         Y_axis = QtCharts.QValueAxis()
         Y_axis.setRange(0.0, float(LifetimeMax))
 
@@ -326,15 +352,75 @@ class main_panel(QMainWindow):
         self.ELOLayout.addWidget(self.ELOGraph)
 
     def genRankIcons(self):
-        self.ELOGraph1 = QtCharts.QChartView()
-
-        self.ELOSet1 = QtCharts.QBarSet("Latest MMR")
-        self.MaxELOSet1 = QtCharts.QBarSet("Max MMR")
         ELOList = []
         LifetimeMax = 0
-        l = []
+        LifetimeMaxRank = 0
+        SeasonNames = []
 
         seasons = len(self.SeasonalData.seasons)
+        for i in range(seasons):
+            SeasonNames.append(None)
+            ELOList.append([None, None])
+        for count, season in enumerate(self.SeasonalData.seasons):
+            SeasonNames[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = (self.SeasonalData.seasons[season]["name"])
+            ELORank = self.SeasonalData.seasons[season]["regions"]["emea"][0]["rank_text"]
+            # if ELORank is None:
+            #     ELORank = 0
+            maxELORank = self.SeasonalData.seasons[season]["regions"]["emea"][0]["max_rank_text"]
+            # if maxELORank is None:
+            #     maxELORank = 0
+            maxELO = self.SeasonalData.seasons[season]["regions"]["emea"][0]["max_mmr"]
+            if maxELO > LifetimeMax:
+                LifetimeMax = maxELO
+                LifetimeMaxRank = maxELORank
+            ELOList[self.SeasonalData.seasons[season]["regions"]["emea"][0]["season_id"] - 6] = [ELORank, maxELORank]
+
+        self.BasicELOSeasons = QGroupBox("Season")
+        self.BasicELORanks = QGroupBox("Rank")
+        self.BasicELOMaxRanks = QGroupBox("Max Rank")
+        self.SeasonLabels = QVBoxLayout()
+        self.RankLabels = QVBoxLayout()
+        self.MaxRankLabels = QVBoxLayout()
+        for season in SeasonNames:
+            SeasonLabel = QLabel(season)
+            SeasonLabel.setMinimumHeight(40)
+            SeasonLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            self.SeasonLabels.addWidget(SeasonLabel)
+        self.BasicELOSeasons.setLayout(self.SeasonLabels)
+        self.BasicELOLabels = QHBoxLayout(self.BasicELOScrollContainer)
+        self.BasicELOLabels.addWidget(self.BasicELOSeasons)
+
+        # TODO: Convert logos etc into qrc for ease of distribution
+        rank_path = Path(os.path.dirname(os.path.realpath(__file__)))
+        rank_path = rank_path / "src" / "ranks" / "35"
+        for ELOSet in ELOList:
+            RankList = conversions.rank_roman_to_int(ELOSet[0])
+            RankName = RankList[0]
+            if len(RankList) > 1:
+                RankName += "-" + str(RankList[1])
+            RankName += ".png"
+            RankLabel = QLabel()
+            RankLabel.setAlignment(Qt.AlignHCenter)
+            RankLabel.setPixmap(QPixmap(str(rank_path / RankName)))
+            self.RankLabels.addWidget(RankLabel)
+            MaxRankList = conversions.rank_roman_to_int(ELOSet[1])
+            MaxRankName = RankList[0]
+            if len(MaxRankList) > 1:
+                MaxRankName += "-" + str(MaxRankList[1])
+            MaxRankName += ".png"
+            MaxRankLabel = QLabel()
+            MaxRankLabel.setAlignment(Qt.AlignHCenter)
+            MaxRankLabel.setPixmap(QPixmap(str(rank_path / MaxRankName)))
+            self.MaxRankLabels.addWidget(MaxRankLabel)
+
+        self.BasicELORanks.setLayout(self.RankLabels)
+        self.BasicELOMaxRanks.setLayout(self.MaxRankLabels)
+        self.BasicELOLabels.addWidget(self.BasicELORanks)
+        self.BasicELOLabels.addWidget(self.BasicELOMaxRanks)
+        self.BasicELOLayout.addLayout(self.BasicELOLabels)
+        # self.BasicELOLayout.addLayout(self.BasicELOMaxLabels)
+
+
 
     def moveBG(self, event):
         # print("move grad")
@@ -355,12 +441,12 @@ class Manager:
         self.inputwin = un_input()
         self.inputwin.show()
     def ShowMain(self, username, platform):
-        try:
-            self.MainWin = main_panel(username, platform)
-            self.MainWin.show()
-            self.close()  # Since the function is being 'extracted' from the class, the context of 'self' is the login window
-        except Exception as e:
-            self.changeStatusBar(str(e), isError=True)
+        # try:
+        self.MainWin = main_panel(username, platform)
+        self.MainWin.show()
+        self.close()  # Since the function is being 'extracted' from the class, the context of 'self' is the login window
+        # except Exception as e:
+        #     self.changeStatusBar(str(e), isError=True)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)  # Passing the script to the Application
