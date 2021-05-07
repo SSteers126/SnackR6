@@ -50,13 +50,13 @@ class un_input(QDialog):
         self.resize(750, 500)
 
         # dir_path = Path(os.path.dirname(os.path.realpath(__file__)))  # NOTE: folder image resize script
-        # path = dir_path / "src" / "ranks"
-        # oppath = dir_path / "src" / "ranks" / "55"
+        # path = dir_path / "src" / "operator icons"
+        # oppath = dir_path / "src" / "operator icons" / "250"
         # for imgpath in os.listdir(path):
         #     if len(imgpath.split(".")) > 1:
         #         # print(imgpath)
         #         img = Image.open(path / imgpath)
-        #         img = img.resize([55, 55], 3)  # 0.01 = 5x5
+        #         img = img.resize([250, 250], 3)  # 0.01 = 5x5
         #         img.save(oppath / imgpath)
 
         # logo = Image.open("src/logo/Snack-R6-logo.png")
@@ -64,7 +64,6 @@ class un_input(QDialog):
         # logo.save("SL.png")
         # print(logo.size)
 
-        # logosize = logo.
         Qtlogo = QPixmap("src/logo/SL.png")
         self.LogoLabel = QLabel()
         self.LogoLabel.setPixmap(Qtlogo)
@@ -155,6 +154,7 @@ class main_panel(QMainWindow):
         self.setWindowIcon(QIcon("src/logo/Snack-R6-icon.png"))
         QApplication.setStyle(QStyleFactory.create("fusion"))
         QApplication.setFont(QFont("Helvetica", 11, 60))  # Montserrat Medium
+        self.BoldFont = QFont("Helvetica", 15, 70)
         self.setWindowTitle("View statistics")
         self.resize(1000, 750)
         # ui = Ui_MainWindow()
@@ -215,10 +215,13 @@ class main_panel(QMainWindow):
         self.KDLayout = QVBoxLayout()
         self.KDWidget = QWidget()
         self.KDWidget.setLayout(self.KDLayout)
-        self.Tabs.addTab(self.KDWidget, "Ranked &K/D per season")
-
+        # Adding main tabs, and the TabWidgets to place inside the main tabs
         self.ELOTabs = QTabWidget()
         self.Tabs.addTab(self.ELOTabs, "&MMR stats")
+        self.OperatorTabs = QTabWidget()
+        self.Tabs.addTab(self.OperatorTabs, "&Operator data")
+        self.Tabs.addTab(self.KDWidget, "Ranked &K/D per season")
+
         self.ELOLayout = QVBoxLayout()
         self.ELOWidget = QWidget()
         self.ELOWidget.setLayout(self.ELOLayout)
@@ -235,13 +238,14 @@ class main_panel(QMainWindow):
         self.ELOTabs.addTab(self.BasicELOScroll, "basic MMR stats")
         self.ELOTabs.addTab(self.ELOWidget, "MMR chart")
 
-        self.OperatorTabs = QTabWidget()
-        self.Tabs.addTab(self.OperatorTabs, "&Operator data")
-
-        self.GenOpsWidget = QWidget()
-        self.GenOpsLayout = QVBoxLayout()
-        self.GenOpsWidget.setLayout(self.GenOpsLayout)
-        self.OperatorTabs.addTab(self.GenOpsWidget, "General")
+        self.GenOpsScroll = QScrollArea()
+        self.GenOpsScroll.setWidgetResizable(True)
+        self.GenOpsScroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.GenOpsScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.GenOpsScrollContainer = QWidget()
+        self.GenOpsScroll.setWidget(self.GenOpsScrollContainer)
+        self.GenOpsLayout = QVBoxLayout(self.GenOpsScrollContainer)
+        self.OperatorTabs.addTab(self.GenOpsScroll, "General")
 
 
         platform = r6statsapi.Platform.uplay
@@ -303,9 +307,10 @@ class main_panel(QMainWindow):
 
     def genELOGraph(self):
         self.ELOGraph = QtCharts.QChartView()
-
         self.ELOSet = QtCharts.QBarSet("Latest MMR")
+        self.ELOSet.setBrush(QBrush(QLinearGradient().MagicRay))
         self.MaxELOSet = QtCharts.QBarSet("Max MMR")
+        self.MaxELOSet.setBrush(QBrush(QLinearGradient().GrownEarly))
         ELOList = []
         LifetimeMax = 0
         SeasonNames = []
@@ -388,7 +393,7 @@ class main_panel(QMainWindow):
         # Setting up the highest rank GroupBox
         self.GeneralBasicELO = QGroupBox("General")
         self.MaxRankText = QLabel("Highest rank: ")
-        self.MaxRankText.setFont(QFont("Helvetica", 16, 80))
+        self.MaxRankText.setFont(self.BoldFont)
         self.MaxRankText.setAlignment(Qt.AlignCenter)
         self.MaxRankLayout = QHBoxLayout()
         self.MaxRankLayout.addWidget(self.MaxRankText)
@@ -476,10 +481,164 @@ class main_panel(QMainWindow):
         # Build a dictionary that is assigned the indexes of all entries, and their corresponding operator names for easy searching
         OperatorIndexDict = {}
         for count, i in enumerate(self.OperatorData.operators):
-            # print(i)
             OperatorIndexDict[i["name"]] = count
-        print(OperatorIndexDict)
-        # print(self.OperatorData.operators[0])
+        # print(OperatorIndexDict)
+        # print(self.OperatorData.operators[OperatorIndexDict["Aruni"]])
+        # print(self.OperatorData.operators[OperatorIndexDict["Mute"]])
+        mostUsedDefender = ["", 0]
+        mostUsedAttacker = ["", 0]
+        mostUsedAttackers = []
+        mostUsedDefenders = []
+
+
+        # Bar Chart variables
+        self.TopOpsChartView = QtCharts.QChartView()
+        self.TopOpsChart = QtCharts.QChart()
+        self.TopOpsChart.setAnimationOptions(QtCharts.QChart.SeriesAnimations)
+        self.TopOpsKDSet = QtCharts.QBarSet("K/D")
+        self.TopOpsKDSet.setBrush(QBrush(QLinearGradient().MagicRay))
+        self.TopOpsWLSet = QtCharts.QBarSet("W/L")
+        self.TopOpsWLSet.setBrush(QBrush(QLinearGradient().GrownEarly))  # TODO: QLinearGradient().BlackSea, QLinearGradient().MagicRay
+
+        self.TopFragOpsChartView = QtCharts.QChartView()
+        self.TopFragOpsChart = QtCharts.QChart()
+        self.TopFragOpsChart.setAnimationOptions(QtCharts.QChart.SeriesAnimations)
+        self.TopFragOpsKDSet = QtCharts.QBarSet("K/D")
+        self.TopFragOpsKDSet.setBrush(QBrush(QLinearGradient().MagicRay))
+        self.TopFragOpsWLSet = QtCharts.QBarSet("W/L")
+        self.TopFragOpsWLSet.setBrush(QBrush(QLinearGradient().GrownEarly))
+
+        OperatorList = []
+        TopOps = {}
+        TopFrags = {}
+        MaxWLChartVal = 0.0
+
+        for i in(self.OperatorData.operators):
+            # Iterating to find the most used operators
+            uses = i["wins"] + i["losses"]
+            if i["role"] == "Attacker":
+                if uses > mostUsedAttacker[1]:
+                    mostUsedAttacker = [i["name"], uses]
+                    mostUsedAttackers.insert(0, [i["name"], uses])
+            else:
+                if uses > mostUsedAttacker[1]:
+                    mostUsedDefender = [i["name"], uses]
+                    mostUsedDefenders.insert(0, [i["name"], uses])
+
+            # Adding Chart Data
+            # self.TopOpsKDSet.append(i["kd"])
+            # self.TopOpsWLSet.append(i["wl"])
+            if i["kd"] > MaxWLChartVal:
+                MaxWLChartVal = i["kd"]
+            if i["wl"] > MaxWLChartVal:
+                MaxWLChartVal = i["wl"]
+            TopOps[(i["name"], i["kd"])] = [i["wl"]]
+            TopFrags[(i["name"], i["wl"])] = [i["kd"]]
+            OperatorList.append(i["name"])
+
+        # This reorders the dictionary to be ordered from highest WL to lowest, with keys of the operator name and KD
+        TopOps = {key: value for key, value in sorted(TopOps.items(), key=lambda item: item[1], reverse=True)}
+        TopFrags = {key: value for key, value in sorted(TopFrags.items(), key=lambda item: item[1], reverse=True)}
+        TopOpNames = []
+        TopFragOpNames = []
+        # print(TopOps)
+        for i in list(TopOps)[0:15]:  # Get first 5 items: 5 highest win/losses
+            TopOpNames.append(i[0])
+            self.TopOpsKDSet.append(i[1])
+            self.TopOpsWLSet.append(TopOps[i])
+
+        MaxKDChartVal = 0.0
+        for i in list(TopFrags)[0:15]:  # Get first 5 items: 5 highest win/losses
+            TopFragOpNames.append(i[0])
+            self.TopFragOpsKDSet.append(TopFrags[i])
+            self.TopFragOpsWLSet.append(i[1])
+            if TopFrags[i][0] > MaxKDChartVal:
+                MaxKDChartVal = TopFrags[i][0]
+            if i[1] > MaxKDChartVal:
+                MaxKDChartVal = i[1]
+
+        # Generating the GroupBox for most used operators
+        self.MostUsedOpsGroup = QGroupBox("Most used operators")
+        self.MostUsedOpsLayout = QHBoxLayout()
+        self.MostUsedAttackerLabel = QLabel("Attacker: ")
+        self.MostUsedAttackerLabel.setAlignment(Qt.AlignCenter)
+        self.MostUsedAttackerLabel.setFont(self.BoldFont)
+        self.MostUsedDefenderLabel = QLabel("Defender: ")
+        self.MostUsedDefenderLabel.setAlignment(Qt.AlignCenter)
+        self.MostUsedDefenderLabel.setFont(self.BoldFont)
+        self.MostUsedOpsLayout.addWidget(self.MostUsedAttackerLabel)
+        self.MostUsedOpsLayout.addWidget(self.MostUsedDefenderLabel)
+
+        large_operator_icon_path = Path(os.path.dirname(os.path.realpath(__file__))) / "src" / "operator icons" / "100"
+        # Adding the top 3 attacker and defender icons to the GroupBox
+        for i in range(3):
+            AttackerIcon = QLabel()
+            DefenderIcon = QLabel()
+            AttackerIcon.setAlignment(Qt.AlignCenter)
+            DefenderIcon.setAlignment(Qt.AlignCenter)
+            AttackerIcon.setPixmap(str(large_operator_icon_path / mostUsedAttackers[i][0].lower()))
+            DefenderIcon.setPixmap(str(large_operator_icon_path / mostUsedDefenders[i][0].lower()))
+            self.MostUsedOpsLayout.insertWidget(i+1, AttackerIcon)
+            self.MostUsedOpsLayout.addWidget(DefenderIcon)
+
+        self.MostUsedOpsGroup.setLayout(self.MostUsedOpsLayout)
+        self.GenOpsLayout.addWidget(self.MostUsedOpsGroup)
+
+        # Generating a KD and Win/Loss bar chart for top winning ops
+
+        X_axis = QtCharts.QBarCategoryAxis()
+        X_axis.append(TopOpNames)
+        Y_axis = QtCharts.QValueAxis()
+        Y_axis.setRange(0.0, float(MaxWLChartVal))
+
+        self.TopOpsChart.addAxis(X_axis, Qt.AlignBottom)
+        self.TopOpsChart.addAxis(Y_axis, Qt.AlignLeft)
+
+        self.TopOpsBarSeries = QtCharts.QBarSeries()
+        self.TopOpsBarSeries.append(self.TopOpsWLSet)
+        self.TopOpsBarSeries.append(self.TopOpsKDSet)
+        self.TopOpsChart.addSeries(self.TopOpsBarSeries)
+        self.TopOpsChartView.setChart(self.TopOpsChart)
+        self.TopOpsChartView.setMinimumHeight(400)  # Stopping the graph from being resized to be unreadable
+        # self.TopOpsChartView.setMaximumHeight(400)  # Use if the graph reacts badly to maximising after another graph has been added
+        self.TopOpsGroup = QGroupBox("Top 15 operators by Win/Loss")
+        self.TopOpsChartLayout = QVBoxLayout()
+        self.TopOpsChartLayout.addWidget(self.TopOpsChartView)
+        self.TopOpsGroup.setLayout(self.TopOpsChartLayout)
+        self.GenOpsLayout.addWidget(self.TopOpsGroup)
+
+        # Generating a KD and Win/Loss bar chart for top fragging ops
+
+        Frag_X_axis = QtCharts.QBarCategoryAxis()
+        Frag_X_axis.append(TopFragOpNames)
+        Frag_Y_axis = QtCharts.QValueAxis()
+        Frag_Y_axis.setRange(0.0, float(MaxKDChartVal))
+
+        self.TopFragOpsChart.addAxis(Frag_X_axis, Qt.AlignBottom)
+        self.TopFragOpsChart.addAxis(Frag_Y_axis, Qt.AlignLeft)
+
+        self.TopFragOpsBarSeries = QtCharts.QBarSeries()
+        self.TopFragOpsBarSeries.append(self.TopFragOpsKDSet)
+        self.TopFragOpsBarSeries.append(self.TopFragOpsWLSet)
+        self.TopFragOpsChart.addSeries(self.TopFragOpsBarSeries)
+        self.TopFragOpsChartView.setChart(self.TopFragOpsChart)
+        self.TopFragOpsChartView.setMinimumHeight(400)  # Stopping the graph from being resized to be unreadable
+        # self.TopOpsChartView.setMaximumHeight(400)  # Use if the graph reacts badly to maximising after another graph has been added
+        self.TopFragOpsGroup = QGroupBox("Top 15 operators by K/D")
+        self.TopFragOpsChartLayout = QVBoxLayout()
+        self.TopFragOpsChartLayout.addWidget(self.TopFragOpsChartView)
+        self.TopFragOpsGroup.setLayout(self.TopFragOpsChartLayout)
+        self.GenOpsLayout.addWidget(self.TopFragOpsGroup)
+
+
+
+
+
+
+
+        # for i in range(50):
+        #     self.GenOpsLayout.addWidget(QLabel("hi"))
+
 
 
 
