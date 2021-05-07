@@ -1,0 +1,4 @@
+QSrollArea - Acts differently to other widgets, will not scale correctly if you set a layout to it.
+Instead, set WidgetResizable to True for the scroll area, set its widget to an empty QWidget,
+and then when creating the layout to use for the window, *parent it to the QWidget*.
+This forces the ScrollArea to respect the layouts dimensions.
