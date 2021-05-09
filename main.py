@@ -4,7 +4,7 @@ from pathlib import Path
 import r6statsapi
 import asyncio
 loop = asyncio.get_event_loop()
-client = r6statsapi.Client("TOKEN")
+client = r6statsapi.Client("Token")
 import globalfile
 # TODO: move to pyside6 when 6.1 is released for graphs
 # PySide is a huge library, so we import what we want explixitly
@@ -155,6 +155,7 @@ class main_panel(QMainWindow):
         QApplication.setStyle(QStyleFactory.create("fusion"))
         QApplication.setFont(QFont("Helvetica", 11, 60))  # Montserrat Medium
         self.BoldFont = QFont("Helvetica", 15, 70)
+        self.SubSectionFont = QFont("Helvetica", 12, 70)
         self.setWindowTitle("View statistics")
         self.resize(1000, 750)
         # ui = Ui_MainWindow()
@@ -217,10 +218,21 @@ class main_panel(QMainWindow):
         self.KDWidget.setLayout(self.KDLayout)
         # Adding main tabs, and the TabWidgets to place inside the main tabs
         self.ELOTabs = QTabWidget()
+
+        self.GenScroll = QScrollArea()
+        self.GenScroll.setWidgetResizable(True)
+        self.GenScroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.GenScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.GenOpsScrollContainer = QWidget()
+        self.GenScroll.setWidget(self.GenOpsScrollContainer)
+        self.GenOpsLayout = QVBoxLayout(self.GenOpsScrollContainer)
+        self.Tabs.addTab(self.GenScroll, "General")
+
         self.Tabs.addTab(self.ELOTabs, "&MMR stats")
+
+        self.Tabs.addTab(self.KDWidget, "Ranked &K/D per season")
         self.OperatorTabs = QTabWidget()
         self.Tabs.addTab(self.OperatorTabs, "&Operator data")
-        self.Tabs.addTab(self.KDWidget, "Ranked &K/D per season")
 
         self.ELOLayout = QVBoxLayout()
         self.ELOWidget = QWidget()
@@ -238,15 +250,6 @@ class main_panel(QMainWindow):
         self.ELOTabs.addTab(self.BasicELOScroll, "basic MMR stats")
         self.ELOTabs.addTab(self.ELOWidget, "MMR chart")
 
-        self.GenOpsScroll = QScrollArea()
-        self.GenOpsScroll.setWidgetResizable(True)
-        self.GenOpsScroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.GenOpsScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.GenOpsScrollContainer = QWidget()
-        self.GenOpsScroll.setWidget(self.GenOpsScrollContainer)
-        self.GenOpsLayout = QVBoxLayout(self.GenOpsScrollContainer)
-        self.OperatorTabs.addTab(self.GenOpsScroll, "General")
-
 
         platform = r6statsapi.Platform.uplay
         if userplatform == "XBOX":
@@ -254,15 +257,20 @@ class main_panel(QMainWindow):
         elif userplatform == "PS4":
             platform = r6statsapi.Platform.psn
 
+        self.GeneralData = loop.run_until_complete(client.get_generic_stats(username, platform))
         self.SeasonalData = loop.run_until_complete(client.get_seasonal_stats(username, platform))
         self.OperatorData = loop.run_until_complete(client.get_operators_stats(username, platform))
+        self.WeaponData = loop.run_until_complete(client.get_weapon_stats(username, platform))
+        # print(self.WeaponData.weapons)
+        for i in self.WeaponData.weapons:
+            print(i)
         # print(self.SeasonalData.seasons)
         # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0])
         # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0]["max_mmr"])
         # print(self.OperatorData.operators)
         self.genAllGraphs()
         self.genRankIcons()
-        self.genOperatorData()
+        self.genGeneralData()
 
     def genAllGraphs(self):
         self.genKDGraph()
@@ -477,7 +485,7 @@ class main_panel(QMainWindow):
         self.BasicSeasonalELOLabels.addWidget(self.BasicELOMaxRanks)
         self.BasicELOLayout.addLayout(self.BasicELOLabels)
 
-    def genOperatorData(self):
+    def genGeneralData(self):
         # Build a dictionary that is assigned the indexes of all entries, and their corresponding operator names for easy searching
         OperatorIndexDict = {}
         for count, i in enumerate(self.OperatorData.operators):
@@ -558,12 +566,14 @@ class main_panel(QMainWindow):
                 MaxKDChartVal = i[1]
 
         # Generating the GroupBox for most used operators
-        self.MostUsedOpsGroup = QGroupBox("Most used operators")
+        self.GeneralDataGroup = QGroupBox("General")
+        self.GenGroupOpsLabel = QLabel("Top operators: ")
+        self.GenGroupOpsLabel.setFont(self.SubSectionFont)
         self.MostUsedOpsLayout = QHBoxLayout()
-        self.MostUsedAttackerLabel = QLabel("Attacker: ")
+        self.MostUsedAttackerLabel = QLabel("Attackers: ")
         self.MostUsedAttackerLabel.setAlignment(Qt.AlignCenter)
         self.MostUsedAttackerLabel.setFont(self.BoldFont)
-        self.MostUsedDefenderLabel = QLabel("Defender: ")
+        self.MostUsedDefenderLabel = QLabel("Defenders: ")
         self.MostUsedDefenderLabel.setAlignment(Qt.AlignCenter)
         self.MostUsedDefenderLabel.setFont(self.BoldFont)
         self.MostUsedOpsLayout.addWidget(self.MostUsedAttackerLabel)
@@ -581,8 +591,52 @@ class main_panel(QMainWindow):
             self.MostUsedOpsLayout.insertWidget(i+1, AttackerIcon)
             self.MostUsedOpsLayout.addWidget(DefenderIcon)
 
-        self.MostUsedOpsGroup.setLayout(self.MostUsedOpsLayout)
-        self.GenOpsLayout.addWidget(self.MostUsedOpsGroup)
+        self.GeneralGroupLayout = QVBoxLayout()
+        self.GeneralGroupLayout.addWidget(self.GenGroupOpsLabel)
+        self.GeneralGroupLayout.addLayout(self.MostUsedOpsLayout)
+
+        WeaponCount = 0
+        AvgHeadshotPercentage = 0.0
+        TopWeapon = ["", 0.0, 0]  # Gun name, K/D (will require 100 or more kills to count)
+        for i in self.WeaponData.weapons:
+            # Adding data for headshot % average
+            if i["headshot_percentage"] != 0:
+                WeaponCount += 1  # Total is needed, so enumerate would not help much here
+                AvgHeadshotPercentage += i["headshot_percentage"]
+            # Adding data for top weapon
+            if i["kills"] >= 100:
+                if i["kd"] > TopWeapon[1]:
+                    TopWeapon = [i["weapon"], round(i["kd"], 5), i["kills"]]
+        if WeaponCount != 0:
+            AvgHeadshotPercentage /= WeaponCount
+            AvgHeadshotPercentage = str(round(AvgHeadshotPercentage, 5))
+            AvgHeadshotPercentage += "%"
+        else:
+            AvgHeadshotPercentage = "N/A"
+
+        self.HeadshotPercentageLayout = QHBoxLayout()
+        self.HeadshotCategoryLabel = QLabel("Headshot percentage: ")
+        self.HeadshotValueLabel = QLabel(str(AvgHeadshotPercentage))
+        self.HeadshotCategoryLabel.setFont(self.SubSectionFont)
+        # self.HeadshotValueLabel.setFont(self.BoldFont)
+        self.HeadshotPercentageLayout.addWidget(self.HeadshotCategoryLabel)
+        self.HeadshotPercentageLayout.addWidget(self.HeadshotValueLabel)
+        self.GeneralGroupLayout.addLayout(self.HeadshotPercentageLayout)
+
+        self.TopWeaponLayout = QHBoxLayout()
+        self.TopWeaponCategoryLabel = QLabel("Top Weapon: ")
+        self.TopWeaponCategoryLabel.setFont(self.SubSectionFont)
+        if TopWeapon[0] != "":
+            self.TopWeaponValueLabel = QLabel("{0}, {1}K/D ({2} kills)".format(TopWeapon[0], TopWeapon[1], TopWeapon[2]))
+        else:
+            self.TopWeaponValueLabel = QLabel("Not enough data.")
+        self.TopWeaponLayout.addWidget(self.TopWeaponCategoryLabel)
+        self.TopWeaponLayout.addWidget(self.TopWeaponValueLabel)
+        self.GeneralGroupLayout.addLayout(self.TopWeaponLayout)
+
+        self.GeneralDataGroup.setLayout(self.GeneralGroupLayout)
+
+        self.GenOpsLayout.addWidget(self.GeneralDataGroup)
 
         # Generating a KD and Win/Loss bar chart for top winning ops
 
@@ -631,24 +685,13 @@ class main_panel(QMainWindow):
         self.GenOpsLayout.addWidget(self.TopFragOpsGroup)
 
 
-
-
-
-
-
-        # for i in range(50):
-        #     self.GenOpsLayout.addWidget(QLabel("hi"))
-
-
-
-
-    def moveBG(self, event):
-        # print("move grad")
-        WidgetSize = event.size()
-        WindowWidth = WidgetSize.width() + 58
-        WindowHeight = WidgetSize.height() + 58
-        self.bggradient.setCenter(WindowWidth + 50, WindowHeight + 194)  # keeps gradient in the same position relative to the window
-        # self.bggradient.setColorAt(0.975, QColor(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
+    # def moveBG(self, event):
+    #     # print("move grad")
+    #     WidgetSize = event.size()
+    #     WindowWidth = WidgetSize.width() + 58
+    #     WindowHeight = WidgetSize.height() + 58
+    #     self.bggradient.setCenter(WindowWidth + 50, WindowHeight + 194)  # keeps gradient in the same position relative to the window
+    #     # self.bggradient.setColorAt(0.975, QColor(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
 
 
     # def resizeEvent(self, event=None):
