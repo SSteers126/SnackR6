@@ -4,7 +4,7 @@ from pathlib import Path
 import r6statsapi
 import asyncio
 loop = asyncio.get_event_loop()
-client = r6statsapi.Client("Token")
+client = r6statsapi.Client("TOKEN")
 import globalfile
 # TODO: move to pyside6 when 6.1 is released for graphs
 # PySide is a huge library, so we import what we want explixitly
@@ -261,9 +261,17 @@ class main_panel(QMainWindow):
         self.SeasonalData = loop.run_until_complete(client.get_seasonal_stats(username, platform))
         self.OperatorData = loop.run_until_complete(client.get_operators_stats(username, platform))
         self.WeaponData = loop.run_until_complete(client.get_weapon_stats(username, platform))
+        self.QueueData = loop.run_until_complete(client.get_queue_stats(username, platform))
         # print(self.WeaponData.weapons)
-        for i in self.WeaponData.weapons:
-            print(i)
+        # for i in self.WeaponData.weapons:
+        #     print(i)
+        # for i in self.QueueData.ranked:
+        #     print(i)
+        print(self.QueueData.ranked)
+        print(self.QueueData.casual)
+        print(self.QueueData.other)
+        print(conversions.ordinal_to_hours(self.QueueData.ranked["playtime"]))
+
         # print(self.SeasonalData.seasons)
         # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0])
         # print(self.SeasonalData.seasons["crimson_heist"]["regions"]["emea"][0]["max_mmr"])
@@ -586,14 +594,36 @@ class main_panel(QMainWindow):
             DefenderIcon = QLabel()
             AttackerIcon.setAlignment(Qt.AlignCenter)
             DefenderIcon.setAlignment(Qt.AlignCenter)
-            AttackerIcon.setPixmap(str(large_operator_icon_path / mostUsedAttackers[i][0].lower()))
-            DefenderIcon.setPixmap(str(large_operator_icon_path / mostUsedDefenders[i][0].lower()))
+            try:
+                AttackerIcon.setPixmap(str(large_operator_icon_path / mostUsedAttackers[i][0].lower()))
+                DefenderIcon.setPixmap(str(large_operator_icon_path / mostUsedDefenders[i][0].lower()))
+            except:
+                continue
             self.MostUsedOpsLayout.insertWidget(i+1, AttackerIcon)
             self.MostUsedOpsLayout.addWidget(DefenderIcon)
 
         self.GeneralGroupLayout = QVBoxLayout()
         self.GeneralGroupLayout.addWidget(self.GenGroupOpsLabel)
         self.GeneralGroupLayout.addLayout(self.MostUsedOpsLayout)
+
+        casual_time = conversions.ordinal_to_hours(self.QueueData.casual["playtime"])
+        ranked_time = conversions.ordinal_to_hours(self.QueueData.ranked["playtime"])
+        self.CasTimeCategory = QLabel("Casual playtime: ")
+        self.CasTimeCategory.setFont(self.SubSectionFont)
+        self.CasTimeLabel = QLabel("{0}H {1}M {2}S".format(casual_time[0], casual_time[1], casual_time[2]))
+        self.CasTimeLayout = QHBoxLayout()
+        self.CasTimeLayout.addWidget(self.CasTimeCategory)
+        self.CasTimeLayout.addWidget(self.CasTimeLabel)
+
+        self.RankTimeCategory = QLabel("Ranked playtime: ")
+        self.RankTimeCategory.setFont(self.SubSectionFont)
+        self.RankTimeLabel = QLabel("{0}H {1}M {2}S".format(ranked_time[0], ranked_time[1], ranked_time[2]))
+        self.RankTimeLayout = QHBoxLayout()
+        self.RankTimeLayout.addWidget(self.RankTimeCategory)
+        self.RankTimeLayout.addWidget(self.RankTimeLabel)
+
+        self.GeneralGroupLayout.addLayout(self.CasTimeLayout)
+        self.GeneralGroupLayout.addLayout(self.RankTimeLayout)
 
         WeaponCount = 0
         AvgHeadshotPercentage = 0.0
